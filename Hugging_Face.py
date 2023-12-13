@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, TFAutoModelForSequenceClassification, create_optimizer
+from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 import tensorflow as tf
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -70,7 +70,7 @@ model.compile(optimizer=optimizer,
               loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
               metrics=tf.metrics.SparseCategoricalAccuracy())
 
-model.fit(train_dataset.shuffle(len(xTrain)).batch(32).prefetch(tf.data.AUTOTUNE), epochs=3)
+model.fit(train_dataset.shuffle(len(xTrain)).batch(32).prefetch(tf.data.AUTOTUNE), epochs=5)
 print('Finished Training...')
 
 loss, accuracy = model.evaluate(test_dataset.batch(32))

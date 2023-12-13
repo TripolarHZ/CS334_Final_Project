@@ -6,66 +6,80 @@ import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 
-#number of layers
 #activation function
-#optimizer
 #learning rate
 #batch size
 #epoch
-#regularization
 
-Y = pd.read_csv('yTrain.csv').head(1000000).values
+
+Y = pd.read_csv('yTrain.csv').head(10000).values
 Y = np.asarray(Y).astype('float32').ravel()
 
 def handle_data(dataset):
-    xTrain = pd.read_csv(f'{dataset}_df_train.csv').head(1000000).values
+    xTrain = pd.read_csv(f'{dataset}_df_train.csv').head(10000).values
     xTrain = np.asarray(xTrain).astype('float32')
     return xTrain
 
-xFeat = handle_data('binary')
+def f1_score(y_true, y_pred):
+    # Convert probabilities to binary predictions
+    y_pred_binary = tf.keras.backend.round(y_pred)
+    tp = tf.keras.backend.sum(tf.keras.backend.cast(y_true * y_pred_binary, 'float'), axis=0)
+    fp = tf.keras.backend.sum(tf.keras.backend.cast((1 - y_true) * y_pred_binary, 'float'), axis=0)
+    fn = tf.keras.backend.sum(tf.keras.backend.cast(y_true * (1 - y_pred_binary), 'float'), axis=0)
+
+    # Calculate precision and recall
+    p = tp / (tp + fp + tf.keras.backend.epsilon())
+    r = tp / (tp + fn + tf.keras.backend.epsilon())
+
+    # Calculate F1 score
+    f1 = 2 * p * r / (p + r + tf.keras.backend.epsilon())
+    f1 = tf.where(tf.math.is_nan(f1), tf.zeros_like(f1), f1)
+    return tf.keras.backend.mean(f1)
+
+#xFeat = handle_data('binary')
 #xFeat = handle_data('bow')
 #xFeat = handle_data('tfidf')
 #xFeat = handle_data('hash')
 #xFeat = handle_data('lda')
-#xFeat = handle_data('pca')
+xFeat = handle_data('pca')
 """
 # hidden layer af
 hid_act_func = ['relu', 'tanh', 'elu', 'swish', 'selu', 'softplus']
-hid_act_acc = []
+hid_act_f1 = []
 highest = 0
 best_func = ""
 kf = KFold(n_splits=5)
 for af in hid_act_func:
-    acc = 0
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Dense(128, activation=af, input_shape=(xFeat.shape[1],)))
+    model.add(tf.keras.layers.Dense(64, activation=af))
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[f1_score])
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
+    f_1 = 0
     for train, test in kf.split(xFeat):
         xTrain, xTest, yTrain, yTest = xFeat[train], xFeat[test], Y[train], Y[test]
-        model = tf.keras.models.Sequential()
-        model.add(tf.keras.layers.Dense(128, activation=af, input_shape=(xFeat.shape[1],)))
-        model.add(tf.keras.layers.Dense(64, activation=af))
-        model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
         model.fit(xTrain, yTrain, epochs=5, batch_size=2056, callbacks=[early_stopping], validation_split=0.1)
-        loss, accuracy = model.evaluate(xTest, yTest)
-        acc += accuracy
-    func_acc = acc/5
-    if func_acc > highest:
-        highest = func_acc
+        loss, f1 = model.evaluate(xTest, yTest)
+        f_1 += f1
+    func_f1 = f_1/5
+    if func_f1 > highest:
+        highest = func_f1
         best_func = af
-    hid_act_acc.append(func_acc)
+    hid_act_f1.append(func_f1)
     print('Finished: ', af)
 print("The best activation function is:", best_func)
 plt.figure(figsize=(10, 6))
-plt.bar(hid_act_func, hid_act_acc)
+plt.bar(hid_act_func, hid_act_f1)
 plt.xlabel('Hidden Layer Activation Functions')
-plt.ylabel('Accuracy')
-plt.title(f'Dense Neural Networks 10-Fold Cross-Validation on PCA Dataset for Hidden Layer Activation Functions')
-plt.ylim(0.92, 0.96)
+plt.ylabel('F-1 Score')
+plt.title(f'Dense Neural Networks 5-Fold Cross-Validation on PCA Dataset for Hidden Layer Activation Functions')
+plt.ylim(0.85, 0.92)
 plt.show()
-"""
+
 # epoch
-epochs = [i for i in range(1, 21)]
-epoch_acc = []
+epochs = [i for i in range(1, 31)]
+epoch_f1 = []
 highest = 0
 best_ep = 0
 kf = KFold(n_splits=5)
@@ -74,83 +88,92 @@ for ep in epochs:
     model.add(tf.keras.layers.Dense(128, activation='relu', input_shape=(xFeat.shape[1],)))
     model.add(tf.keras.layers.Dense(64, activation='relu'))
     model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[f1_score])
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
-    acc = 0
+    f_1 = 0
     for train, test in kf.split(xFeat):
         xTrain, xTest, yTrain, yTest = xFeat[train], xFeat[test], Y[train], Y[test]
         model.fit(xTrain, yTrain, epochs=ep, batch_size=2056, callbacks=[early_stopping], validation_split=0.1)
-        loss, accuracy = model.evaluate(xTest, yTest)
-        acc += accuracy
-    ep_acc = acc/5
-    if ep_acc > highest:
-        highest = ep_acc
+        loss, f1 = model.evaluate(xTest, yTest)
+        f_1 += f1
+    ep_f1 = f_1/5
+    if ep_f1 > highest:
+        highest = ep_f1
         best_ep = ep
-    epoch_acc.append(ep_acc)
+    epoch_f1.append(ep_f1)
     print('Finished: ', ep)
 print("The best epoch is:", best_ep)
 plt.figure(figsize=(10, 6))
-plt.plot(epochs, epoch_acc)
+plt.plot(epochs, epoch_f1)
 plt.xlabel('Number of Epochs')
-plt.ylabel('Accuracy')
-plt.title(f'Dense Neural Networks 10-Fold Cross-Validation on Binary Dataset for Epochs')
-plt.show()
-"""
-# batch size
-bs = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
-bs_acc = []
-kf = KFold(n_splits=5)
-for batch in bs:
-    for train, test in kf.split(xFeat):
-        acc = 0
-        xTrain, xTest, yTrain, yTest = xFeat[train], xFeat[test], Y[train], Y[test]
-        model = tf.keras.models.Sequential()
-        model.add(tf.keras.layers.Dense(128, activation='relu', input_shape=(xFeat.shape[1],)))
-        model.add(tf.keras.layers.Dense(64, activation='relu'))
-        model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
-        model.fit(xTrain, yTrain, epochs=5, batch_size=batch, callbacks=[early_stopping], validation_split=0.1)
-        loss, accuracy = model.evaluate(xTest, yTest)
-        acc += accuracy
-    bs_acc.append(acc/5)
-plt.figure(figsize=(10, 6))
-plt.plot(bs, bs_acc, marker='o')
-plt.xlabel('Batch Size')
-plt.ylabel('Accuracy')
-plt.title(f'Dense Neural Networks 10-Fold Cross-Validation on Binary Dataset for Batch Size')
+plt.ylabel('F1-Score')
+plt.title(f'Dense Neural Networks 5-Fold Cross-Validation on PCA Dataset for Epochs')
 plt.show()
 
-# output layer af
-out_act_func = ['sigmoid', 'softmax', 'linear']
-out_act_acc = []
+# batch size
+bs = ['1', '2', '4', '8', '16', '32', '64', '128', '256', '512', '1024', '2048']
+batch_f1 = []
 highest = 0
-best_func = ""
+best_bs = 0
 kf = KFold(n_splits=5)
-for af in out_act_func:
-    acc = 0
+for batch in bs:
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Dense(128, activation='relu', input_shape=(xFeat.shape[1],)))
+    model.add(tf.keras.layers.Dense(64, activation='relu'))
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[f1_score])
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
+    f_1 = 0
     for train, test in kf.split(xFeat):
         xTrain, xTest, yTrain, yTest = xFeat[train], xFeat[test], Y[train], Y[test]
-        model = tf.keras.models.Sequential()
-        model.add(tf.keras.layers.Dense(128, activation='relu', input_shape=(xFeat.shape[1],)))
-        model.add(tf.keras.layers.Dense(64, activation='relu'))
-        model.add(tf.keras.layers.Dense(1, activation=af))
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
-        model.fit(xTrain, yTrain, epochs=5, batch_size=2056, callbacks=[early_stopping], validation_split=0.1)
-        loss, accuracy = model.evaluate(xTest, yTest)
-        acc += accuracy
-    func_acc = acc/5
-    if func_acc > highest:
-        highest = func_acc
-        best_func = af
-    out_act_acc.append(func_acc)
-    print('Finished: ', af)
-print("The best activation function is:", best_func)
+        model.fit(xTrain, yTrain, epochs=5, batch_size=int(batch), callbacks=[early_stopping], validation_split=0.1)
+        loss, f1 = model.evaluate(xTest, yTest)
+        f_1 += f1
+    bs_f1 = f_1/5
+    if bs_f1 > highest:
+        highest = bs_f1
+        best_bs = batch
+    batch_f1.append(bs_f1)
+    print('Finished: ', batch)
+print("The best batch size is:", best_bs)
 plt.figure(figsize=(10, 6))
-plt.bar(out_act_func, out_act_acc)
-plt.xlabel('Output Layer Activation Functions')
-plt.ylabel('Accuracy')
-plt.title(f'Dense Neural Networks 10-Fold Cross-Validation on PCA Dataset for Output Layer Activation Functions')
+plt.bar(bs, batch_f1)
+plt.xlabel('Batch Size')
+plt.ylabel('F-1 Score')
+plt.title(f'Dense Neural Networks 5-Fold Cross-Validation on PCA Dataset for Batch Size')
+plt.ylim(0.8, 1.0)
 plt.show()
 """
+# learning rate
+lrs = ['1', '0.1', '0.5', '0.01', '0.05', '0.001', '0.005', '0.0001', '0.0005', '0.00001', '0.00005', '0.000001']
+learn_f1 = []
+highest = 0
+best_lr = 0
+kf = KFold(n_splits=5)
+for lr in lrs:
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Dense(128, activation='relu', input_shape=(xFeat.shape[1],)))
+    model.add(tf.keras.layers.Dense(64, activation='relu'))
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+    optimizer = tf.keras.optimizers.Adam(learning_rate=float(lr))
+    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=[f1_score])
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
+    f_1 = 0
+    for train, test in kf.split(xFeat):
+        xTrain, xTest, yTrain, yTest = xFeat[train], xFeat[test], Y[train], Y[test]
+        model.fit(xTrain, yTrain, epochs=5, batch_size=2056, callbacks=[early_stopping], validation_split=0.1)
+        loss, f1 = model.evaluate(xTest, yTest)
+        f_1 += f1
+    lr_f1 = f_1/5
+    if lr_f1 > highest:
+        highest = lr_f1
+        best_lr = lr
+    learn_f1.append(lr_f1)
+    print('Finished: ', lr)
+print("The best learning rate is:", best_lr)
+plt.figure(figsize=(10, 6))
+plt.bar(lrs, learn_f1)
+plt.xlabel('Learning Rate')
+plt.ylabel('F-1 Score')
+plt.title(f'Dense Neural Networks 5-Fold Cross-Validation on PCA Dataset for Learning Rate')
+plt.show()
